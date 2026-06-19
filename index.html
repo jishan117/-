@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>মোবাইল ও মাউস হিল ক্লাইম্ব</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            touch-action: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: #70c5ce;
+            overflow: hidden;
+            position: fixed;
+            width: 100vw;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+            z-index: 5;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: pointer; /* মাউস নিলে হাতের চিহ্ন দেখাবে */
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">স্কোর: <span id="score">0</span> মি.</div>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const scoreEl = document.getElementById("score");
+
+        let gameRunning = true;
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // গাড়ি বা কার অবজেক্ট
+        let car = {
+            x: 100,
+            y: 200,
+            vx: 0,
+            vy: 0,
+            angle: 0,
+            angularVelocity: 0,
+            speed: 0.16,
+            maxSpeed: 6,
+            friction: 0.98,
+            gravity: 0.22
+        };
+
+        // পাহাড় জেনারেট করার লজিক
+        function getHillHeight(x) {
+            return canvas.height - 150 
+                + Math.sin(x * 0.005) * 80 
+                + Math.sin(x * 0.01) * 40 
+                + Math.sin(x * 0.002) * 100;
+        }
+
+        // ইনপুট স্টেট
+        let inputs = { gas: false, brake: false };
+
+        // ১. মোবাইল টাচ ইভেন্ট
+        window.addEventListener("touchstart", (e) => {
+            e.preventDefault();
+            for (let t of e.changedTouches) {
+                if (t.clientX > window.innerWidth / 2) inputs.gas = true;
+                else inputs.brake = true;
+            }
+        });
+
+        window.addEventListener("touchend", (e) => {
+            e.preventDefault();
+            for (let t of e.changedTouches) {
+                if (t.clientX > window.innerWidth / 2) inputs.gas = false;
+                else inputs.brake = false;
+            }
+        });
+
+        // ২. পিসি মাউস ক্লিক ইভেন্ট (মাউস দিয়ে খেলার জন্য)
+        window.addEventListener("mousedown", (e) => {
+            // মাউসের বাম বাটন ক্লিক করলে গাড়ি সামনে যাবে
+            if (e.button === 0) {
+                inputs.gas = true;
+            }
+        });
+
+        window.addEventListener("mouseup", (e) => {
+            if (e.button === 0) {
+                inputs.gas = false;
+            }
+        });
+
+        // মাউস স্ক্রিনের বাইরে চলে গেলে গাড়ি থামানোর জন্য
+        window.addEventListener("mouseleave", () => {
+            inputs.gas = false;
+            inputs.brake = false;
+        });
+
+        // গেম লুপ আপডেট
+        function update() {
+            if (!gameRunning) return;
+
+            // গাড়ি চালানো বা ব্রেক করা
+            if (inputs.gas) {
+                car.vx += Math.cos(car.angle) * car.speed;
+                car.vy += Math.sin(car.angle) * car.speed;
+            }
+            if (inputs.brake) {
+                car.vx -= Math.cos(car.angle) * (car.speed * 0.8);
+                car.vy -= Math.sin(car.angle) * (car.speed * 0.8);
+            }
+
+            car.vx *= car.friction;
+            car.vy += car.gravity;
+
+            car.x += car.vx;
+            car.y += car.vy;
+
+            let currentGroundY = getHillHeight(car.x);
+
+            // মাটির সাথে কলিশন
+            if (car.y >= currentGroundY - 15) {
+                car.y = currentGroundY - 15;
+                car.vy = 0;
+
+                let nextGroundY = getHillHeight(car.x + 5);
+                let targetAngle = Math.atan2(nextGroundY - currentGroundY, 5);
+                
+                car.angle += (targetAngle - car.angle) * 0.2;
+                car.angularVelocity *= 0.5;
+            } else {
+                // বাতাসে ফ্লিপিং কন্ট্রোল
+                if (inputs.gas) car.angularVelocity += 0.01;
+                if (inputs.brake) car.angularVelocity -= 0.01;
+                
+                car.angularVelocity *= 0.95;
+                car.angle += car.angularVelocity;
+            }
+
+            // ক্র্যাশ কন্ডিশন (গাড়ি উল্টে গেলে)
+            let normalizedAngle = Math.abs((car.angle + Math.PI) % (Math.PI * 2) - Math.PI);
+            if (normalizedAngle > 1.4 && car.y >= currentGroundY - 16) {
+                gameRunning = false;
+                alert("গাড়ি উল্টে গেছে! আবার চেষ্টা করুন।");
+                location.reload();
+            }
+
+            scoreEl.innerText = Math.floor(car.x / 10);
+        }
+
+        // ক্যানভাসে ড্র করা
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(-car.x + 150, 0);
+
+            // পাহাড় আঁকা
+            ctx.beginPath();
+            ctx.moveTo(car.x - 200, canvas.height);
+            for (let x = car.x - 200; x < car.x + canvas.width + 200; x += 5) {
+                ctx.lineTo(x, getHillHeight(x));
+            }
+            ctx.lineTo(car.x + canvas.width + 200, canvas.height);
+            ctx.fillStyle = "#8dc63f"; 
+            ctx.fill();
+
+            // গাড়ি আঁকা
+            ctx.save();
+            ctx.translate(car.x, car.y);
+            ctx.rotate(car.angle);
+
+            // বডি
+            ctx.fillStyle = "#ff3333";
+            ctx.fillRect(-25, -15, 50, 15);
+            ctx.fillStyle = "#333";
+            ctx.fillRect(-15, -23, 25, 9); 
+
+            // চাকা ১
+            ctx.beginPath();
+            ctx.arc(-15, 2, 8, 0, Math.PI * 2);
+            ctx.fillStyle = "#111";
+            ctx.fill();
+
+            // চাকা ২
+            ctx.beginPath();
+            ctx.arc(15, 2, 8, 0, Math.PI * 2);
+            ctx.fillStyle = "#111";
+            ctx.fill();
+
+            ctx.restore();
+            ctx.restore();
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>
